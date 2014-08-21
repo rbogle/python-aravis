@@ -1,5 +1,6 @@
 import time
 import numpy as np
+import logging
 from ctypes import POINTER, create_string_buffer, byref, Structure, cdll, Union
 from ctypes import c_ulong, c_char, c_int, c_void_p, c_long, c_char_p, c_uint32, c_void_p, c_int64, c_float, c_bool, c_uint, c_double, c_int32, c_size_t, c_uint64, c_uint8
 from ctypes import py_object, pythonapi
@@ -232,13 +233,14 @@ class Stream(object):
             return None
         #im = np.ctypeslib.as_array(buf.contents.data, (buf.contents.height, buf.contents.width))
         b = self._buf_from_memory(buf.contents.data, buf.contents.size*8)
-        if self.pixel_format == "Mono16":
-            pixelformat = np.uint16
-        else:
+        #TODO changed to handle multiple formats
+        if '8' in self.pixel_format:
             pixelformat = np.uint8
+        else:
+            pixelformat = np.uint16
         im = np.frombuffer(b, dtype=pixelformat, count=buf.contents.height * buf.contents.width)
         im.shape = (buf.contents.height, buf.contents.width) 
-        print("Shape: ", im.shape)
+        logging.debug("Image array shape: %s" % (im.shape,))
         im = im.copy()
         self.push_buffer(buf)
         return im
@@ -375,7 +377,7 @@ class Camera(Device):
 
         self.name = self.get_vendor_name() + b"-" + self.get_device_id()
         self.stream  = self.create_stream()
-        print("Created Camera object: ", self)
+        logging.info("Created Aravis Camera object: %s" % self.name)
         
 
     def create_buffers(self, nb = 10):
@@ -441,6 +443,10 @@ class Camera(Device):
     def get_exposure_time(self):
         self._ar.dll.arv_camera_get_exposure_time.restype = c_double
         return self._ar.dll.arv_camera_get_exposure_time (self._handle)
+	
+    def set_exposure_time(self,val):
+        val = c_double(val)
+        return self._ar.dll.arv_camera_set_exposure_time (self._handle, val)
 
     def get_payload(self):
         self._ar.dll.arv_camera_get_payload.restype = c_uint
@@ -458,9 +464,9 @@ class Camera(Device):
         self._ar.dll.arv_camera_get_gain.restype = c_double
         return self._ar.dll.arv_camera_get_gain (self._handle)
 
-    def set_gain (self):
-        self._ar.dll.arv_camera_set_gain.restype = c_double
-        return self._ar.dll.arv_camera_set_gain (self._handle)
+    def set_gain (self,val):
+        val = c_double(val)
+        return self._ar.dll.arv_camera_set_gain (self._handle, val)
 
     def get_vendor_name (self):
         self._ar.dll.arv_camera_get_vendor_name.restype = c_char_p
@@ -496,9 +502,9 @@ class Camera(Device):
 
     def start_acquisition_continuous(self):
         self.set_string_feature("AcquisitionMode", "Continuous") #no acquisition limits
-        self.set_string_feature("TriggerSource", "Freerun") #as fast as possible
+        #self.set_string_feature("TriggerSource", "Freerun") #as fast as possible
         #self.set_string_feature("TriggerSource", "FixedRate") 
-        self.set_string_feature("TriggerMode", "On") #Not documented but necesary
+        #self.set_string_feature("TriggerMode", "On") #Not documented but necesary
         self.start_acquisition()
 
 
@@ -512,9 +518,13 @@ class Camera(Device):
     def get_pixel_format_as_string(self): 
         self._ar.dll.arv_camera_get_pixel_format_as_string.restype = c_char_p 
         return self._ar.dll.arv_camera_get_pixel_format_as_string(self._handle)
+        
+    def set_pixel_format_as_string(self, val): 
+        val = c_char_p(val) 
+        return self._ar.dll.arv_camera_set_pixel_format_from_string(self._handle,val)    
 
     def cleanup(self):
-        print(self.name, ": cleanup")
+        logging.info("%s : cleanup" % self.name)
         self._ar.g.g_object_unref(self._handle)
 
     def __del__(self):
